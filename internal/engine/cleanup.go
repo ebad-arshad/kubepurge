@@ -8,41 +8,43 @@ import (
 	"strings"
 )
 
-// CleanupArchives keeps 'keep' versions of EACH unique receipt ID
+// CleanupArchives keeps 'keep' versions of EACH unique receipt ID in the archive folder
 func CleanupArchives(keep int) error {
-	files, err := os.ReadDir(receiptDir)
+	files, err := os.ReadDir(archiveDir)
 	if err != nil {
 		return err
 	}
 
 	// 1. Group files by their base ID
-	// Key: "calico-v5", Value: List of full filenames
+	// Key: "nginx-app", Value: List of historical file info
 	buckets := make(map[string][]os.FileInfo)
 
 	for _, file := range files {
-		if !file.IsDir() && strings.HasPrefix(file.Name(), "archived-") {
-			info, _ := file.Info()
-			
-			// Extract the base ID (e.g., "archived-calico-v5-2026.json" -> "calico-v5")
-			name := strings.TrimPrefix(file.Name(), "archived-")
-			name = strings.TrimSuffix(name, ".json")
-			
-			// We split by the timestamp dash we added in ArchiveReceipt
-			parts := strings.Split(name, "-")
-			baseID := parts[0] 
-			if len(parts) > 1 && !strings.Contains(parts[len(parts)-1], "202") {
-				// This handles IDs that might have dashes in them
-				baseID = strings.Join(parts[:len(parts)-1], "-")
+		// Only process .json files and skip directories
+		if !file.IsDir() && strings.HasSuffix(file.Name(), ".json") {
+			info, err := file.Info()
+			if err != nil {
+				continue
 			}
 
+			// Format is [ID]-[Timestamp].json
+			fileName := strings.TrimSuffix(file.Name(), ".json")
+			parts := strings.Split(fileName, "-")
+
+			if len(parts) < 2 {
+				continue // Skip files that don't match our naming convention
+			}
+
+			// The last part is the timestamp, everything before is the original ID
+			baseID := strings.Join(parts[:len(parts)-1], "-")
 			buckets[baseID] = append(buckets[baseID], info)
 		}
 	}
 
-	// 2. Process each bucket
+	// 2. Process each bucket to enforce retention
 	for baseID, archiveList := range buckets {
 		if len(archiveList) <= keep {
-			continue // Nothing to do for this resource
+			continue // Within limits
 		}
 
 		// Sort by modification time (Newest first)
@@ -50,14 +52,16 @@ func CleanupArchives(keep int) error {
 			return archiveList[i].ModTime().After(archiveList[j].ModTime())
 		})
 
-		// 3. Delete the extras
+		// 3. Delete the oldest versions
 		toDelete := archiveList[keep:]
-		fmt.Printf("🧹 Resource '%s' has %d archives. Keeping %d...\n", baseID, len(archiveList), keep)
-		
+		fmt.Printf("🧹 Resource '%s' has %d archives. Keeping %d most recent...\n", baseID, len(archiveList), keep)
+
 		for _, file := range toDelete {
-			err := os.Remove(filepath.Join(receiptDir, file.Name()))
+			err := os.Remove(filepath.Join(archiveDir, file.Name()))
 			if err != nil {
 				fmt.Printf("⚠️  Failed to delete %s: %v\n", file.Name(), err)
+			} else {
+				fmt.Printf("🗑️  Removed old archive: %s\n", file.Name())
 			}
 		}
 	}
