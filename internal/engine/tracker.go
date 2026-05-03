@@ -5,30 +5,40 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 	"strings"
+	"time"
+
 	"github.com/ebad-arshad/kubepurge/pkg/types"
 )
 
+var (
+	baseDir    string
+	activeDir  string
+	archiveDir string
+	deletedDir string
+)
 
-func getReceiptDir() string {
-    home, _ := os.UserHomeDir()
-    path := filepath.Join(home, ".kubepurge", "receipts")
-    
-    // Ensure the directory exists
-    os.MkdirAll(path, 0755)
-    return path
-}
-
-var receiptDir = getReceiptDir()
-
-// SaveReceipt writes the resource list to a JSON file, but prevents overwriting.
-func SaveReceipt(receipt types.Receipt) error {
-	if err := os.MkdirAll(receiptDir, 0755); err != nil {
-		return fmt.Errorf("failed to create receipt directory: %w", err)
+// init() runs automatically when the package is imported
+func init() {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = "/tmp" // Fallback if home dir cannot be found
 	}
 
-	filePath := filepath.Join(receiptDir, receipt.ID+".json")
+	baseDir = filepath.Join(home, ".kubepurge")
+	activeDir = filepath.Join(baseDir, "active")
+	archiveDir = filepath.Join(baseDir, "archive")
+	deletedDir = filepath.Join(baseDir, "deleted")
+
+	// Ensure all directories exist
+	os.MkdirAll(activeDir, 0755)
+	os.MkdirAll(archiveDir, 0755)
+	os.MkdirAll(deletedDir, 0755)
+}
+
+// SaveReceipt writes the resource list to a JSON file in the active directory.
+func SaveReceipt(receipt types.Receipt) error {
+	filePath := filepath.Join(activeDir, receipt.ID+".json")
 
 	// 1. Check if ACTIVE file exists
 	if _, err := os.Stat(filePath); err == nil {
@@ -36,10 +46,10 @@ func SaveReceipt(receipt types.Receipt) error {
 	}
 
 	// 2. Check if an ARCHIVE of this ID exists
-	// We check for any file starting with "archived-[ID]"
-	files, _ := os.ReadDir(receiptDir)
+	// We check the archive folder for files starting with "ID-" (e.g., my-app-16839393.json)
+	files, _ := os.ReadDir(archiveDir)
 	for _, file := range files {
-		if strings.HasPrefix(file.Name(), "archived-"+receipt.ID) {
+		if strings.HasPrefix(file.Name(), receipt.ID+"-") && strings.HasSuffix(file.Name(), ".json") {
 			return fmt.Errorf("ID '%s' already exists in your archives. Please use a new version name (e.g., %s-v2) to avoid confusion", receipt.ID, receipt.ID)
 		}
 	}
@@ -53,13 +63,13 @@ func SaveReceipt(receipt types.Receipt) error {
 	return os.WriteFile(filePath, data, 0644)
 }
 
-// LoadReceipt reads a saved receipt from disk by its ID.
+// LoadReceipt reads a saved receipt from the active directory by its ID.
 func LoadReceipt(id string) (*types.Receipt, error) {
-	filePath := filepath.Join(receiptDir, id+".json")
+	filePath := filepath.Join(activeDir, id+".json")
 
 	data, err := os.ReadFile(filePath)
 	if err != nil {
-		return nil, fmt.Errorf("receipt '%s' not found", id)
+		return nil, fmt.Errorf("receipt '%s' not found in active tracking", id)
 	}
 
 	var receipt types.Receipt
@@ -70,35 +80,35 @@ func LoadReceipt(id string) (*types.Receipt, error) {
 	return &receipt, nil
 }
 
+// ArchiveReceipt moves a receipt from the active directory to the archive directory.
 func ArchiveReceipt(id string) error {
-	oldPath := filepath.Join(receiptDir, id+".json")
-	
-	// Check if the old receipt actually exists
-	if _, err := os.Stat(oldPath); os.IsNotExist(err) {
-		return fmt.Errorf("receipt %s not found", id)
+	activePath := filepath.Join(activeDir, id+".json")
+
+	// Check if the old receipt actually exists in the active folder
+	if _, err := os.Stat(activePath); os.IsNotExist(err) {
+		return fmt.Errorf("receipt '%s' not found in active directory", id)
 	}
 
-	newPath := filepath.Join(receiptDir, "archived-"+id+".json")
-	
-	// If an archive already exists with that name, add a timestamp to prevent overwrite
-	if _, err := os.Stat(newPath); err == nil {
-		timestamp := time.Now().Format("20060102-150405")
-		newPath = filepath.Join(receiptDir, "archived-"+id+"-"+timestamp+".json")
-	}
+	// Create a clean archive name using a Unix timestamp
+	timestamp := time.Now().Unix()
+	archiveName := fmt.Sprintf("%s-%d.json", id, timestamp)
+	archivePath := filepath.Join(archiveDir, archiveName)
 
-	return os.Rename(oldPath, newPath)
+	// Move the file
+	return os.Rename(activePath, archivePath)
 }
 
+// ListActiveReceipts returns a summary of all deployments currently tracked in the active directory.
 func ListActiveReceipts() ([]types.ReceiptSummary, error) {
-	files, err := os.ReadDir(receiptDir)
+	files, err := os.ReadDir(activeDir)
 	if err != nil {
 		return nil, err
 	}
 
 	var summaries []types.ReceiptSummary
 	for _, file := range files {
-		// Only show .json files and ignore archived ones
-		if !file.IsDir() && strings.HasSuffix(file.Name(), ".json") && !strings.HasPrefix(file.Name(), "archived-") {
+		// Only process .json files. No need to check for "archived-" prefixes anymore!
+		if !file.IsDir() && strings.HasSuffix(file.Name(), ".json") {
 			receipt, err := LoadReceipt(strings.TrimSuffix(file.Name(), ".json"))
 			if err != nil {
 				continue
@@ -111,4 +121,19 @@ func ListActiveReceipts() ([]types.ReceiptSummary, error) {
 		}
 	}
 	return summaries, nil
+}
+
+// MoveToDeleted moves a receipt from active to deleted after a purge.
+func MoveToDeleted(id string) error {
+	activePath := filepath.Join(activeDir, id+".json")
+
+	if _, err := os.Stat(activePath); os.IsNotExist(err) {
+		return fmt.Errorf("receipt '%s' not found in active directory", id)
+	}
+
+	timestamp := time.Now().Unix()
+	deletedName := fmt.Sprintf("%s-purged-%d.json", id, timestamp)
+	deletedPath := filepath.Join(deletedDir, deletedName)
+
+	return os.Rename(activePath, deletedPath)
 }
