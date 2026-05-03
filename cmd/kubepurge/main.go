@@ -344,7 +344,7 @@ func main() {
 	applyCmd.Flags().StringVarP(&manifestPath, "file", "f", "", "YAML file or URL")
 	applyCmd.Flags().StringVarP(&receiptID, "id", "i", "", "Unique ID for the receipt")
 	applyCmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Target namespace")
-	applyCmd.Flags().StringVar(&replacesID, "replaces", "r","", "ID of an old receipt to archive")
+	applyCmd.Flags().StringVarP(&replacesID, "replaces", "r", "", "The ID of the version you are overwriting")
 
 	// Define Flags for Purge
 	purgeCmd.Flags().StringVarP(&receiptID, "id", "i", "", "ID of the receipt to purge")
