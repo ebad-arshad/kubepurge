@@ -1,0 +1,20 @@
+# Binaries
+/kubepurge
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test Data & Coverage
+*.out
+*.test
+
+# Go dependencies and workspace
+vendor/
+go.work
+.env
+
+# OS specific
+.DS_Store
+Thumbs.db
