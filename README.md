@@ -200,6 +200,12 @@ KubePurge is built on a strict **"No-Footprint" philosophy**. We believe tools s
 *   📂 **`archive/` (History):** Stores previous versions of your deployments when you update them (using the `--replaces` flag).
 *   📂 **`deleted/` (Audit):** Keeps a permanent, timestamped log of everything you've successfully purged.
 
+```bash
+~/.kubepurge/
+├── active/     # Active current "Source of Truth"
+├── archive/    # Version history (for rollbacks/audit)
+└── deleted/    # The graveyard (audit logs of purges)
+```
 **Reverse-Order Deletion (LIFO):** During a purge, KubePurge parses your receipt and deletes resources in reverse order (Last-In, First-Out). This is a critical safety feature ensuring that dependent resources (like Pods) are deleted *before* their underlying dependencies (like Namespaces or Secrets), preventing hanging resources and annoying timeout errors.
 
 ---
