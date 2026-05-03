@@ -25,12 +25,22 @@ var (
 	replacesID   string
 	keepCount 	 int
 	forceCleanup bool
+	Version = "v1.0.0"
 )
 
 func main() {
 	var rootCmd = &cobra.Command{
 		Use:   "kubepurge",
 		Short: "A tool to track and deep-clean K8s resources",
+	}
+
+	var versionCmd = &cobra.Command{
+		Use:   "version",
+		Short: "Print the version number of KubePurge",
+		Long:  `All software has versions. This is KubePurge's.`,
+		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Printf("KubePurge %s\n", Version)
+		},
 	}
 
 	var statusCmd = &cobra.Command{
@@ -309,7 +319,7 @@ func main() {
 	diffCmd.Flags().StringVarP(&manifestPath, "file", "f", "", "Manifest file or URL to compare")
 	
 	// Add commands to root
-	rootCmd.AddCommand(applyCmd, purgeCmd, cleanupCmd, listCmd, inspectCmd, diffCmd, statusCmd)
+	rootCmd.AddCommand(applyCmd, purgeCmd, cleanupCmd, listCmd, inspectCmd, diffCmd, statusCmd, versionCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
