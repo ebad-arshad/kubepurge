@@ -16,6 +16,8 @@ import (
 	"github.com/spf13/cobra"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/tools/clientcmd"
+
+	"runtime/debug"
 )
 
 var (
@@ -25,7 +27,6 @@ var (
 	replacesID   string
 	keepCount 	 int
 	forceCleanup bool
-	Version = "v1.0.0"
 )
 
 func main() {
@@ -37,9 +38,12 @@ func main() {
 	var versionCmd = &cobra.Command{
 		Use:   "version",
 		Short: "Print the version number of KubePurge",
-		Long:  `All software has versions. This is KubePurge's.`,
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Printf("KubePurge %s\n", Version)
+			if info, ok := debug.ReadBuildInfo(); ok {
+				fmt.Printf("KubePurge %s\n", info.Main.Version)
+				return
+			}
+			fmt.Println("KubePurge version unknown")
 		},
 	}
 
