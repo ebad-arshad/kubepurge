@@ -10,6 +10,7 @@ import (
 	"time"
 	"strings"
 	"text/tabwriter"
+	"os/exec"
 
 	"github.com/ebad-arshad/kubepurge/internal/engine"
 	"github.com/ebad-arshad/kubepurge/pkg/types"
@@ -223,15 +224,16 @@ func main() {
 	}
 
 	// --- APPLY COMMAND ---
+	
 	var applyCmd = &cobra.Command{
-		Use:   "apply",
-		Short: "Record a receipt and suggest manual installation",
-		Run: func(cmd *cobra.Command, args []string) {
+	Use:   "apply",
+	Short: "Record a receipt and suggest tailored kubectl commands",
+	Run: func(cmd *cobra.Command, args []string) {
 			if manifestPath == "" || receiptID == "" {
 				log.Fatal("❌ Error: --file and --id are required")
 			}
 
-			// 1. Fetch and Parse
+			// 1. Fetch and Parse local manifest
 			data, err := readManifest(manifestPath)
 			if err != nil {
 				log.Fatalf("❌ Read failed: %v", err)
@@ -246,26 +248,50 @@ func main() {
 				ID:        receiptID,
 				AppliedAt: time.Now(),
 				Resources: resources,
+				Namespace: namespace,
 			}
 
-			// 2. SAVE the new receipt FIRST
-			// This will trigger our "Existence Check" in SaveReceipt. 
-			// If it fails, the program stops here and nothing is archived!
+			// 2. Save and Archive logic (Same as before)
 			if err := engine.SaveReceipt(receipt); err != nil {
 				log.Fatalf("❌ Save failed: %v", err)
 			}
 
-			// 3. ARCHIVE the old one ONLY after the new one is safely saved
 			if replacesID != "" {
 				fmt.Printf("🔄 Success! Archiving old receipt '%s'...\n", replacesID)
-				err := engine.ArchiveReceipt(replacesID)
-				if err != nil {
+				if err := engine.ArchiveReceipt(replacesID); err != nil {
 					log.Printf("⚠️  Note: Could not archive %s: %v", replacesID, err)
 				}
 			}
 
-			fmt.Printf("✅ Receipt '%s' created with %d resources.\n", receiptID, len(resources))
-			fmt.Printf("👉 Next Step: kubectl apply -f %s\n", manifestPath)
+			// 3. SMART GUIDANCE LOGIC
+			fmt.Println("\n------------------------------------------------")
+			fmt.Printf("✅ Receipt '%s' recorded (%d resources).\n", receiptID, len(resources))
+			fmt.Println("👉 Next steps to deploy:")
+
+			if namespace != "" {
+				// Check if namespace exists in the cluster
+				checkNs := exec.Command("kubectl", "get", "namespace", namespace)
+				nsExists := checkNs.Run() == nil
+
+				if !nsExists {
+					// Case A: Namespace is missing
+					fmt.Printf("⚠️  Namespace '%s' does not exist yet.\n", namespace)
+					fmt.Println("   Run this first:")
+					fmt.Printf("   \033[1;33mkubectl create namespace %s\033[0m\n\n", namespace)
+					
+					fmt.Println("   Then apply your manifest:")
+					fmt.Printf("   \033[1;32mkubectl apply -f %s -n %s\033[0m\n", manifestPath, namespace)
+				} else {
+					// Case B: Namespace exists
+					fmt.Printf("✨ Namespace '%s' is already present.\n", namespace)
+					fmt.Println("   Run the apply command:")
+					fmt.Printf("   \033[1;32mkubectl apply -f %s -n %s\033[0m\n", manifestPath, namespace)
+				}
+			} else {
+				// Case C: No namespace specified (Default)
+				fmt.Printf("   \033[1;32mkubectl apply -f %s\033[0m\n", manifestPath)
+			}
+			fmt.Println("------------------------------------------------")
 		},
 	}
 
@@ -303,6 +329,14 @@ func main() {
 					fmt.Printf("✨ Purge complete! History archived.\n")
 				}
 			}
+			
+			fmt.Printf("✅ Resources from receipt '%s' have been purged.\n", receiptID)
+
+			if receipt.Namespace != "" {
+				fmt.Println("\n💡 Tip: The namespace '" + receipt.Namespace + "' still exists.")
+				fmt.Println("   If you want to delete it, run:")
+				fmt.Printf("   \033[1;31mkubectl delete namespace %s\033[0m\n", receipt.Namespace)
+			}
 		},
 	}
 
@@ -310,7 +344,7 @@ func main() {
 	applyCmd.Flags().StringVarP(&manifestPath, "file", "f", "", "YAML file or URL")
 	applyCmd.Flags().StringVarP(&receiptID, "id", "i", "", "Unique ID for the receipt")
 	applyCmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Target namespace")
-	applyCmd.Flags().StringVar(&replacesID, "replaces", "", "ID of an old receipt to archive")
+	applyCmd.Flags().StringVar(&replacesID, "replaces", "r","", "ID of an old receipt to archive")
 
 	// Define Flags for Purge
 	purgeCmd.Flags().StringVarP(&receiptID, "id", "i", "", "ID of the receipt to purge")
