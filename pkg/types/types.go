@@ -15,6 +15,8 @@ type Receipt struct {
 	ID          string     `json:"id"`           // Unique name for this installation (e.g., "calico-v3")
 	AppliedAt   time.Time  `json:"applied_at"`
 	Resources   []Resource `json:"resources"`
+	Namespace 	string	   `json:"namespace"`
+
 }
 
 // ReceiptSummary gives a quick overview of a saved receipt
