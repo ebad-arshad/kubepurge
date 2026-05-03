@@ -114,12 +114,18 @@ func splitAPIVersion(apiVersion string) (group, version string) {
 // Note: This is a simple version. For a real tool, one might use 
 // the K8s Discovery Client to find the exact plural name.
 func pluralize(kind string) string {
-	// Special cases for K8s plurals
-	if strings.HasSuffix(kind, "y") {
-		return strings.ToLower(kind[:len(kind)-1]) + "ies"
-	}
-	if strings.HasSuffix(kind, "s") {
-		return strings.ToLower(kind) + "es"
-	}
-	return strings.ToLower(kind) + "s"
+    k := strings.ToLower(kind)
+    switch k {
+    case "ingress":
+        return "ingresses"
+    case "priorityclass":
+        return "priorityclasses"
+    // Add other outliers here if they pop up
+    }
+
+    if strings.HasSuffix(k, "y") {
+        return k[:len(k)-1] + "ies"
+    }
+    // Most resources just need an 's'
+    return k + "s"
 }
