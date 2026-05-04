@@ -11,7 +11,6 @@ import (
     "strings"
     "text/tabwriter"
     "os/exec"
-	"strconv"
     "github.com/ebad-arshad/kubepurge/internal/engine"
     "github.com/ebad-arshad/kubepurge/pkg/types"
     "github.com/spf13/cobra"
@@ -185,38 +184,43 @@ func main() {
         },
     }
 
-	var cleanupCmd = &cobra.Command{
-    Use:   "cleanup [NUMBER]",
-    Short: "Retain only a specific number of recent archived receipts",
-    // This line forces an error if the user doesn't provide exactly 1 argument
-    Args:  cobra.ExactArgs(1), 
-    Run: func(cmd *cobra.Command, args []string) {
-			// 1. Convert the argument to an integer
-			keep, err := strconv.Atoi(args[0])
-			if err != nil {
-				log.Fatalf("❌ Error: '%s' is not a valid number. Please provide an integer.", args[0])
-			}
+    var cleanupCmd = &cobra.Command{
+        Use:   "cleanup",
+        Short: "Prune old archived receipts while retaining the most recent versions",
+        Args:  cobra.NoArgs, 
+        Run: func(cmd *cobra.Command, args []string) {
+            // 1. Contextual Confirmation Message
+            if !forceCleanup {
+                if receiptID != "" {
+                    fmt.Printf("⚠️  Targeting ID: '%s'. This will retain only the %d most recent versions for this resource. Continue? (y/N): ", receiptID, keepCount)
+                } else {
+                    fmt.Printf("⚠️  GLOBAL CLEANUP: This will retain only the %d most recent versions for ALL resources. Continue? (y/N): ", keepCount)
+                }
 
-			// 2. Confirmation logic
-			if !forceCleanup {
-				fmt.Printf("⚠️  This will delete all but the %d most recent archives per resource. Continue? (y/N): ", keep)
-				var response string
-				fmt.Scanln(&response)
-				if strings.ToLower(response) != "y" {
-					fmt.Println("❌ Cleanup cancelled.")
-					return
-				}
-			}
+                var response string
+                fmt.Scanln(&response)
+                if strings.ToLower(response) != "y" {
+                    fmt.Println("❌ Cleanup cancelled.")
+                    return
+                }
+            }
 
-			// 3. Execute the engine logic
-			err = engine.CleanupArchives(keep)
-			if err != nil {
-				log.Fatalf("❌ Cleanup failed: %v", err)
-			}
-			
-			fmt.Printf("✨ Success! Kept the %d latest versions for each tracked ID.\n", keep)
-		},
-	}
+            // 2. Execute the engine logic (Pass the receiptID flag)
+            // Ensure your engine.CleanupArchives signature is updated to: CleanupArchives(keep int, targetID string)
+            err := engine.CleanupArchives(keepCount, receiptID)
+            if err != nil {
+                log.Fatalf("❌ Cleanup failed: %v", err)
+            }
+            
+            // 3. Tailored Success Message
+            if receiptID != "" {
+                fmt.Printf("✨ Success! Pruned archives for '%s', keeping the %d latest versions.\n", receiptID, keepCount)
+            } else {
+                fmt.Printf("✨ Success! Global cleanup complete. Kept the %d latest versions for each tracked ID.\n", keepCount)
+            }
+        },
+    }
+    
     var applyCmd = &cobra.Command{
         Use:   "apply",
         Short: "Record a receipt and suggest tailored kubectl commands",
@@ -242,15 +246,15 @@ func main() {
                 Namespace: namespace,
             }
 
-            if err := engine.SaveReceipt(receipt); err != nil {
-                log.Fatalf("❌ Save failed: %v", err)
-            }
-
             if replacesID != "" {
-                fmt.Printf("🔄 Success! Archiving old receipt '%s'...\n", replacesID)
+                fmt.Printf("🔄 Archiving old receipt '%s'...\n", replacesID)
                 if err := engine.ArchiveReceipt(replacesID); err != nil {
                     log.Printf("⚠️  Note: Could not archive %s: %v", replacesID, err)
                 }
+            }
+
+            if err := engine.SaveReceipt(receipt, replacesID); err != nil {
+                log.Fatalf("❌ Save failed: %v", err)
             }
 
             fmt.Println("\n------------------------------------------------")
@@ -328,6 +332,8 @@ func main() {
 
     purgeCmd.Flags().StringVarP(&receiptID, "id", "i", "", "ID of the receipt to purge")
 
+    cleanupCmd.Flags().IntVarP(&keepCount, "keep", "k", 5, "Number of recent archives to retain")
+    cleanupCmd.Flags().StringVarP(&receiptID, "id", "i", "", "Target a specific Resource ID for cleanup")
     cleanupCmd.Flags().BoolVarP(&forceCleanup, "force", "y", false, "Skip confirmation prompt")
 
     diffCmd.Flags().StringVarP(&manifestPath, "file", "f", "", "Manifest file or URL to compare")
