@@ -37,30 +37,31 @@ func init() {
 }
 
 // SaveReceipt writes the resource list to a JSON file in the active directory.
-func SaveReceipt(receipt types.Receipt) error {
-	filePath := filepath.Join(activeDir, receipt.ID+".json")
+// 1. Update signature to accept replacesID
+func SaveReceipt(receipt types.Receipt, replacesID string) error {
+    filePath := filepath.Join(activeDir, receipt.ID+".json")
 
-	// 1. Check if ACTIVE file exists
-	if _, err := os.Stat(filePath); err == nil {
-		return fmt.Errorf("ID '%s' is currently active. Use --replaces if you want to update it", receipt.ID)
-	}
+    // 1. Check if ACTIVE file exists
+    if _, err := os.Stat(filePath); err == nil {
+        // ONLY throw error if we aren't explicitly replacing this specific ID
+        if receipt.ID != replacesID {
+            return fmt.Errorf("ID '%s' is currently active. Use --replaces if you want to update it", receipt.ID)
+        }
+        // If receipt.ID == replacesID, we continue. The WriteFile at the end 
+        // will safely overwrite the old active receipt after it's been archived.
+    }
 
-	// 2. Check if an ARCHIVE of this ID exists
-	// We check the archive folder for files starting with "ID-" (e.g., my-app-16839393.json)
-	files, _ := os.ReadDir(archiveDir)
-	for _, file := range files {
-		if strings.HasPrefix(file.Name(), receipt.ID+"-") && strings.HasSuffix(file.Name(), ".json") {
-			return fmt.Errorf("ID '%s' already exists in your archives. Please use a new version name (e.g., %s-v2) to avoid confusion", receipt.ID, receipt.ID)
-		}
-	}
+    // 2. Archive Check (RELAXED)
+    // We removed the hard 'return error' here. In DevOps, it's normal to have 
+    // archives of an ID. We only care if the ACTIVE one is being stepped on.
+    
+    // 3. Proceed with saving
+    data, err := json.MarshalIndent(receipt, "", "  ")
+    if err != nil {
+        return fmt.Errorf("failed to marshal receipt: %w", err)
+    }
 
-	// 3. Proceed with saving if clear
-	data, err := json.MarshalIndent(receipt, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal receipt: %w", err)
-	}
-
-	return os.WriteFile(filePath, data, 0644)
+    return os.WriteFile(filePath, data, 0644)
 }
 
 // LoadReceipt reads a saved receipt from the active directory by its ID.
