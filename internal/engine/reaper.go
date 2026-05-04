@@ -53,6 +53,8 @@ func GetGVR(kind string) (schema.GroupVersionResource, error) {
 		return schema.GroupVersionResource{Group: "storage.k8s.io", Version: "v1", Resource: "storageclasses"}, nil
 	case "PersistentVolumeClaim":
 		return schema.GroupVersionResource{Group: "", Version: "v1", Resource: "persistentvolumeclaims"}, nil
+	case "PersistentVolume":
+		return schema.GroupVersionResource{Group: "", Version: "v1", Resource: "persistentvolumes"}, nil
 	case "NetworkPolicy":
         return schema.GroupVersionResource{Group: "networking.k8s.io", Version: "v1", Resource: "networkpolicies"}, nil
     case "HorizontalPodAutoscaler":
