@@ -9,62 +9,69 @@ import (
 )
 
 // CleanupArchives keeps 'keep' versions of EACH unique receipt ID in the archive folder
-func CleanupArchives(keep int) error {
-	files, err := os.ReadDir(archiveDir)
-	if err != nil {
-		return err
-	}
+func CleanupArchives(keep int, targetID string) error {
+    files, err := os.ReadDir(archiveDir)
+    if err != nil {
+        return err
+    }
 
-	// 1. Group files by their base ID
-	// Key: "nginx-app", Value: List of historical file info
-	buckets := make(map[string][]os.FileInfo)
+    buckets := make(map[string][]os.FileInfo)
 
-	for _, file := range files {
-		// Only process .json files and skip directories
-		if !file.IsDir() && strings.HasSuffix(file.Name(), ".json") {
-			info, err := file.Info()
-			if err != nil {
-				continue
-			}
+    for _, entry := range files {
+        if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+            continue
+        }
 
-			// Format is [ID]-[Timestamp].json
-			fileName := strings.TrimSuffix(file.Name(), ".json")
-			parts := strings.Split(fileName, "-")
+        info, _ := entry.Info()
+        name := strings.TrimSuffix(entry.Name(), ".json")
+        
+        // 1. EXTRACT the baseID first
+        var baseID string
+        if strings.Contains(name, "-") {
+            parts := strings.Split(name, "-")
+            baseID = strings.Join(parts[:len(parts)-1], "-")
+        } else if strings.Contains(name, "_") {
+            parts := strings.Split(name, "_")
+            baseID = strings.Join(parts[:len(parts)-1], "_")
+        } else {
+            baseID = name 
+        }
 
-			if len(parts) < 2 {
-				continue // Skip files that don't match our naming convention
-			}
+        // 2. NOW check if it matches the targetID (if one was provided)
+        if targetID != "" && baseID != targetID {
+            continue
+        }
 
-			// The last part is the timestamp, everything before is the original ID
-			baseID := strings.Join(parts[:len(parts)-1], "-")
-			buckets[baseID] = append(buckets[baseID], info)
-		}
-	}
+        buckets[baseID] = append(buckets[baseID], info)
+    }
 
-	// 2. Process each bucket to enforce retention
-	for baseID, archiveList := range buckets {
-		if len(archiveList) <= keep {
-			continue // Within limits
-		}
+    if len(buckets) == 0 {
+        fmt.Println("ℹ️  No matching archive files found to clean.")
+        return nil
+    }
 
-		// Sort by modification time (Newest first)
-		sort.Slice(archiveList, func(i, j int) bool {
-			return archiveList[i].ModTime().After(archiveList[j].ModTime())
-		})
+    for id, list := range buckets {
+        if len(list) <= keep {
+            fmt.Printf("✅ '%s' is already clean (Files: %d, Keep: %d)\n", id, len(list), keep)
+            continue
+        }
 
-		// 3. Delete the oldest versions
-		toDelete := archiveList[keep:]
-		fmt.Printf("🧹 Resource '%s' has %d archives. Keeping %d most recent...\n", baseID, len(archiveList), keep)
+        // Sort: Newest First
+        sort.Slice(list, func(i, j int) bool {
+            return list[i].ModTime().After(list[j].ModTime())
+        })
 
-		for _, file := range toDelete {
-			err := os.Remove(filepath.Join(archiveDir, file.Name()))
-			if err != nil {
-				fmt.Printf("⚠️  Failed to delete %s: %v\n", file.Name(), err)
-			} else {
-				fmt.Printf("🗑️  Removed old archive: %s\n", file.Name())
-			}
-		}
-	}
+        toDelete := list[keep:]
+        fmt.Printf("🧹 Pruning '%s': Keeping %d, deleting %d...\n", id, keep, len(toDelete))
 
-	return nil
+        for _, f := range toDelete {
+            err := os.Remove(filepath.Join(archiveDir, f.Name()))
+            if err != nil {
+                fmt.Printf("⚠️  Failed to delete %s: %v\n", f.Name(), err)
+            } else {
+                fmt.Printf("🗑️  Deleted: %s\n", f.Name())
+            }
+        }
+    }
+    return nil
 }
