@@ -108,8 +108,10 @@ kubepurge list
 ### `cleanup`
 Retain only a specific number of recent archived receipts per ID, deleting the rest.
 ```bash
-kubepurge cleanup <number> [-y]
+kubepurge cleanup [-k number] [-i receipt-id] [-y]
 ```
+- `-k, --keep`: Number of recent archives to retain (default: 5)
+- `-i, --id`: Target a specific receipt ID for cleanup (optional)
 - `-y, --force`: Skip confirmation prompt
 
 ### `version`
@@ -165,7 +167,7 @@ rm $(go env GOPATH)/bin/kubepurge
 # 2. Delete your local state history
 rm -rf ~/.kubepurge
 ```
-*Note: If you just want to clear some space without uninstalling the tool, you can use the `kubepurge cleanup <number>` command to prune old archives! You can also manually delete files inside `~/.kubepurge/active`, `archive`, or `deleted` if you need to clear specific receipt records.*
+*Note: If you just want to clear some space without uninstalling the tool, you can use the `kubepurge cleanup -k <number>` command to prune old archives! You can also manually delete files inside `~/.kubepurge/active`, `archive`, or `deleted` if you need to clear specific receipt records.*
 
 ---
 
@@ -214,7 +216,7 @@ KubePurge is built on a strict **"No-Footprint" philosophy**. We believe tools s
 
 KubePurge relies on basic pluralization logic to dynamically interact with the Kubernetes API. 
 
-*   **Custom Resource Definitions (CRDs):** Most standard resources (Deployments, ConfigMaps, Ingresses) work out of the box. However, if you are deploying CRDs with highly irregular plural names that don't follow standard English rules, KubePurge might struggle to purge them. Feel free to open a PR to add exceptions to the `pluralize()` function in `reaper.go`!
+*   **Custom Resource Definitions (CRDs):** Most standard resources (Deployments, ConfigMaps, Ingresses, PersistentVolumes) work out of the box. However, if you are deploying CRDs with highly irregular plural names that don't follow standard English rules, KubePurge might struggle to purge them. Feel free to open a PR to add exceptions to the `pluralize()` function in `reaper.go`!
 *   **Helm Integration:** KubePurge parses raw YAML. If you want to track Helm releases, simply save the template output to a file and apply it:
     ```bash
     helm template my-release ./my-chart > temp.yaml
