@@ -151,8 +151,18 @@ cd kubepurge
 # 2. Build the binary
 go build -o kubepurge ./cmd/kubepurge
 
-# 3. Move it to your PATH
-sudo mv kubepurge /usr/local/bin/
+# 3. Create the directory (if it doesn't exist)
+mkdir -p ~/.local/bin
+
+# 4. Move the binary
+mv kubepurge ~/.local/bin/
+
+# 5. Ensure it's in your PATH
+export PATH="$HOME/.local/bin:$PATH"
+
+# 6. Refresh your terminal
+source ~/.bashrc
+
 ```
 
 ### 🧹 Uninstalling KubePurge
